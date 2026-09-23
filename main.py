@@ -126,7 +126,7 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     QUESTIONS = load_questions()
     print(f"Загружено: первая — {len(QUESTIONS['first'])}, высшая — {len(QUESTIONS['highest'])}.")
-    print("Откройте http://127.0.0.1:8000")
+    print("Отeкройте http://127.0.0.1:8000")
     ThreadingHTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
 else:
     QUESTIONS = load_questions()
