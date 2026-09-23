@@ -62,4 +62,4 @@ jobs:
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && git pull --ff-only origin main &&
-            docker compose up -d --build --remove-orphans"
+            docker-compose up -d --build --remove-orphans"
