@@ -1,0 +1,32 @@
+name: Проверка тренажёра
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Настроить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Проверить синтаксис
+        run: python -m py_compile main.py
+
+      - name: Проверить чтение банка вопросов
+        run: |
+          python -c "
+          import main
+          first = len(main.QUESTIONS['first'])
+          highest = len(main.QUESTIONS['highest'])
+          print(f'Первая категория: {first}; высшая: {highest}')
+          assert first > 0, 'Не найдены вопросы первой категории'
+          assert highest > 0, 'Не найдены вопросы высшей категории'
+          "
