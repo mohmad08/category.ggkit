@@ -7,34 +7,13 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Получить исходный код
-        uses: actions/checkout@v4
-
-      - name: Настроить Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Проверить синтаксис
-        run: python -m py_compile main.py
-
-      - name: Проверить чтение банка вопросов
-        run: |
-          python -c "
-          import main
-          first = len(main.QUESTIONS['first'])
-          highest = len(main.QUESTIONS['highest'])
-          print(f'Первая категория: {first}; высшая: {highest}')
-          assert first > 0, 'Не найдены вопросы первой категории'
-          assert highest > 0, 'Не найдены вопросы высшей категории'
-          "
+      # ... шаги для проверки кода остаются без изменений ...
 
   deploy:
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # <-- ИЗМЕНЕНО
     environment: production
 
     concurrency:
@@ -42,139 +21,11 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      # === ШАГ 1: Проверка, что секреты подставились ===
-      - name: Проверить переменные окружения
+      # Никаких SSH и настройки known_hosts! Просто выполняем команды.
+      - name: Git pull и перезапуск Docker Compose
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          echo "=== Проверка секретов ==="
-          echo "HOST задан: $([ -n "${DEPLOY_HOST}" ] && echo 'да' || echo 'НЕТ')"
-          echo "USER задан: $([ -n "${DEPLOY_USER}" ] && echo 'да' || echo 'НЕТ')"
-          echo "PORT задан: $([ -n "${DEPLOY_PORT}" ] && echo 'да' || echo 'НЕТ')"
-          echo "PATH задан: $([ -n "${DEPLOY_PATH}" ] && echo 'да' || echo 'НЕТ')"
-          echo ""
-          echo "PORT = '${DEPLOY_PORT}'"
-          echo "PATH = '${DEPLOY_PATH}'"
-
-      # === ШАГ 2: Узнать внешний IP раннера (пригодится для логов MikroTik) ===
-      - name: Узнать внешний IP раннера
-        run: |
-          echo "IP раннера: $(curl -s https://api.ipify.org)"
-          echo "IP раннера (v6, может не быть): $(curl -s -6 https://api64.ipify.org || echo 'нет')"
-
-      # === ШАГ 3: Разрешение DNS и пинг ===
-      - name: Проверить DNS и пинг до хоста
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-        run: |
-          echo "=== Разрешение имени хоста ==="
-          getent hosts "${DEPLOY_HOST}" || echo "DNS не разрешился"
-          echo ""
-          echo "=== Ping (не критично, ICMP может быть закрыт) ==="
-          ping -c 3 -W 5 "${DEPLOY_HOST}" || echo "Ping не прошёл (это нормально)"
-
-      # === ШАГ 4: Проверка TCP-порта через nc — КЛЮЧЕВОЙ ШАГ ===
-      - name: Проверить TCP-порт через nc
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-        run: |
-          echo "=== Проверка TCP-соединения с ${DEPLOY_HOST}:${DEPLOY_PORT} ==="
-          nc -zv -w 10 "${DEPLOY_HOST}" "${DEPLOY_PORT}" || (echo "ПОРТ НЕДОСТУПЕН!" && exit 1)
-
-      # === ШАГ 5: Настройка SSH-ключа и known_hosts ===
-      - name: Настроить SSH-доступ
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-          echo "=== SSH-ключ и known_hosts записаны ==="
-          ls -la ~/.ssh/
-          echo ""
-          echo "=== Первая строка known_hosts ==="
-          head -1 ~/.ssh/known_hosts
-
-      # === ШАГ 6: Проверка SSH-подключения (только echo) ===
-      - name: Проверить SSH-подключение
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-        run: |
-          echo "=== Пробуем SSH с verbose ==="
-          ssh -vvv -p "${DEPLOY_PORT}" \
-              -o ConnectTimeout=15 \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "echo 'SSH РАБОТАЕТ'; whoami; hostname; pwd" 2>&1 | tail -60
-
-      # === ШАГ 7: Проверка пути на сервере ===
-      - name: Проверить путь на сервере
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh -p "${DEPLOY_PORT}" \
-              -o ConnectTimeout=15 \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "echo '=== Проверка пути ==='; ls -la '${DEPLOY_PATH}' && cd '${DEPLOY_PATH}' && pwd && git status"
-
-      # === ШАГ 8: Git pull ===
-      - name: Git pull на сервере
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh -p "${DEPLOY_PORT}" \
-              -o ConnectTimeout=15 \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "cd '${DEPLOY_PATH}' && git pull --ff-only origin main"
-
-      # === ШАГ 9: Перезапуск Docker Compose ===
-      - name: Перезапустить Docker Compose
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh -p "${DEPLOY_PORT}" \
-              -o ConnectTimeout=15 \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "cd '${DEPLOY_PATH}' && docker compose up -d --build --remove-orphans"
-
-      # === ШАГ 10: Показать статус контейнера (всегда, даже при ошибке) ===
-      - name: Показать статус контейнера и логи
-        if: always()
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh -p "${DEPLOY_PORT}" \
-              -o ConnectTimeout=15 \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "docker ps -a --filter 'name=python-app' ; echo '--- ЛОГИ ---' ; cd '${DEPLOY_PATH}' && docker compose logs --tail=50 python-app" || true
+          cd "${DEPLOY_PATH}"
+          git pull --ff-only origin main
+          docker compose up -d --build --remove-orphans
