@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - /home/hrvision/category.ggkit:/app
+      - ./:/app
     working_dir: /app
     command: python main.py
     restart: unless-stopped
