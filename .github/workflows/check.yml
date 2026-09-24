@@ -1,13 +1,55 @@
+name: Проверка тренажёра
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Настроить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Проверить синтаксис
+        run: python -m py_compile main.py
+
+      - name: Проверить чтение банка вопросов
+        run: |
+          python -c "
+          import main
+          first = len(main.QUESTIONS['first'])
+          highest = len(main.QUESTIONS['highest'])
+          print(f'Первая категория: {first}; высшая: {highest}')
+          assert first > 0, 'Не найдены вопросы первой категории'
+          assert highest > 0, 'Не найдены вопросы высшей категории'
+          "
+
   deploy:
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     environment: production
 
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
     steps:
       - name: Обновить код и перезапустить контейнер
         run: |
           cd /home/hrvision/category.ggkit
+          echo "=== Текущая папка: $(pwd) ==="
+          echo "=== Git pull ==="
           git pull --ff-only origin main
+          echo "=== Пересборка и запуск контейнера ==="
           docker compose up -d --build --remove-orphans
+          echo "=== Статус контейнера ==="
+          docker ps -a --filter "name=python-app"
+          echo "=== Логи контейнера ==="
           docker compose logs --tail=30 python-app
