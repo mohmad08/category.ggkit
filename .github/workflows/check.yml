@@ -45,7 +45,7 @@ jobs:
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          cd "${DEPLOY_PATH}"
+          cd /home/hrvision/category.ggkit
           echo "=== Текущая папка: $(pwd) ==="
           echo "=== Git status до pull ==="
           git status
