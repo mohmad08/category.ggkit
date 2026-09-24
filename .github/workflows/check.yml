@@ -14,7 +14,7 @@ jobs:
       - name: Настроить Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Проверить синтаксис
         run: python -m py_compile main.py
@@ -41,10 +41,21 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Git pull и перезапуск Docker Compose
+      - name: Обновить код и перезапустить контейнер
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           cd "${DEPLOY_PATH}"
+          echo "=== Текущая папка: $(pwd) ==="
+          echo "=== Git status до pull ==="
+          git status
+          echo "=== Git pull ==="
           git pull --ff-only origin main
+          echo "=== Git log после pull ==="
+          git log -1 --oneline
+          echo "=== Docker compose up ==="
           docker compose up -d --build --remove-orphans
+          echo "=== Статус контейнера ==="
+          docker ps -a --filter "name=python-app"
+          echo "=== Логи контейнера (последние 30 строк) ==="
+          docker compose logs --tail=30 python-app
